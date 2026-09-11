@@ -1,0 +1,62 @@
+name: Publish release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - module.json
+      - scripts/**
+      - README.md
+      - CHANGELOG.md
+      - LICENSE
+      - .github/workflows/release.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Read module version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r '.version' module.json)
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Foundry package
+        if: steps.version.outputs.exists != 'true'
+        run: |
+          mkdir -p dist/argon-apothecary-compat
+          cp module.json README.md CHANGELOG.md LICENSE dist/argon-apothecary-compat/
+          cp -R scripts dist/argon-apothecary-compat/
+          cd dist
+          zip -r ../argon-apothecary-compat.zip argon-apothecary-compat
+
+      - name: Create GitHub release
+        if: steps.version.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            argon-apothecary-compat.zip \
+            module.json \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
