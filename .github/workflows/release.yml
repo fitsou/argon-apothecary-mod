@@ -48,6 +48,16 @@ jobs:
           cd dist
           zip -r ../argon-apothecary-compat.zip argon-apothecary-compat
 
+      - name: Prepare release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { capture = 1; next }
+            capture && $0 ~ "^## \\[" { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+
       - name: Create GitHub release
         if: steps.version.outputs.exists != 'true'
         env:
@@ -59,4 +69,14 @@ jobs:
             module.json \
             --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --generate-notes
+            --notes-file release-notes.md
+
+      - name: Refresh existing release notes
+        if: steps.version.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release edit "$TAG" \
+            --title "$TAG" \
+            --notes-file release-notes.md
